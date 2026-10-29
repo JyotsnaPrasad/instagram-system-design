@@ -1,6 +1,6 @@
 # Instagram-like MVP — Requirements
 
-Status: Draft (requirements only; no implementation yet)
+Status: Implemented. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [README.md](README.md) for how to run and test it.
 
 ## 1. Overview
 

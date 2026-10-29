@@ -271,7 +271,7 @@ PostCard = author link, text (pre-wrap, plain text), RelativeTime, LikeButton, C
 **Interaction rules**
 - **API client:** `client.ts` wraps `fetch`. It reads the acting user **when the call starts** and sets the header, so a request already in flight finishes as the user who started it (E22).
 - **Cache keys** include the acting user id, for example `['feed', actingUserId]`. Switching user shows that user's data without manual cache clearing.
-- **After a successful write** (post, like, comment, follow), invalidate `feed`, `userPosts`, `post` and `profile` queries so every visible view updates (FR-5.6). At MVP size, invalidating these broadly is simpler than precise cache updates.
+- **After a successful write** (post, like, comment, follow), invalidate every query except the fixed user list (feed, profiles, user posts, post detail, follower lists), so every visible view updates (FR-5.6). At MVP size, invalidating broadly is simpler than precise cache updates.
 - **Submit buttons** (post, comment, like, follow) are disabled while their request is in flight, which prevents double submits (E9, E10). Each mutation stays pending until the refetch finishes, so buttons never flash a stale state.
 - **Accessibility:** skip link, visible focus rings, labelled inputs, the like toggle uses `aria-pressed`, the follow button's label states the action, profile sections are ARIA tabs with arrow-key support, errors use `role="alert"`, and the confirm dialog traps focus and returns it on close. Touch targets are at least 44px.
 - **Mobile:** below 900px the user sidebar becomes a story-style row; below 480px cards go edge to edge and the header puts the switcher on its own full-width row.
@@ -281,7 +281,7 @@ PostCard = author link, text (pre-wrap, plain text), RelativeTime, LikeButton, C
 
 ## 8. Feed retrieval logic
 
-`FeedService.feed(me)` runs a fixed number of queries (six), however many posts there are:
+`FeedService.feed(me)` runs a fixed number of queries (eight, plus the acting-user check every request makes), however many posts there are:
 
 1. **Author set:** `authorIds = {me} ∪ followService.followeeIds(me)`
 2. **Posts** (`post` module), a Spring Data derived query:
