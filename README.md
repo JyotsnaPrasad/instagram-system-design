@@ -17,7 +17,7 @@ frontend, browser tests and submission prep. The exact prompts are in
 
 ## Demo recording
 
-[![Walkthrough video: Instaclone home feed](docs/demo/walkthrough-poster.jpg)](docs/demo/instaclone-walkthrough.mp4)
+https://github.com/user-attachments/assets/9f5e5099-6262-4dbe-a53c-1beb5a6f8349
 
 **[▶ Watch the walkthrough (MP4, 62 s, 0.9 MB)](docs/demo/instaclone-walkthrough.mp4)**
 
