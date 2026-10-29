@@ -34,8 +34,8 @@ frontend, using demo data only. In order, it shows:
 
 Playwright's video doesn't capture the mouse pointer, so a small cursor overlay follows
 the real mouse events. A caption at the bottom names each step. Everything else is the
-live app. The brief white flash at 0:48 is the real page reload. GitHub may offer the
-MP4 as a download rather than playing it inline, depending on your browser.
+live app. The brief white flash at 0:48 is the real page reload. The player above is
+hosted by GitHub; the same file is kept in `docs/demo/`.
 
 ## Features
 
