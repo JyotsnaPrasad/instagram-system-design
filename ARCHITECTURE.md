@@ -1,6 +1,6 @@
 # Instagram-like MVP — Architecture
 
-Status: Draft (design only; no application code yet)
+Status: Backend implemented (`backend/`); frontend not built yet
 Implements: [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ## 1. Decisions at a glance
@@ -8,16 +8,18 @@ Implements: [REQUIREMENTS.md](REQUIREMENTS.md)
 | Concern | Choice |
 |---|---|
 | Shape | Modular monolith: one Spring Boot app with REST APIs, plus a separate React single-page app |
-| Backend | Java 17, Spring Boot 3.3.x, Maven, Spring Web, Spring JDBC (`JdbcClient`), Bean Validation |
-| Database | H2, file-based (`./data/instagram-mvp.mv.db`), schema managed by Flyway |
+| Backend | Java 17, Spring Boot 3.5.x, Maven (wrapper included), Spring Web, Spring Data JPA (Hibernate) |
+| Database | H2, file-based (`backend/data/instagram-mvp.mv.db`), schema managed by Flyway; Hibernate only validates it |
 | Frontend | React 18 + TypeScript, Vite, React Router, TanStack Query |
 | "Auth" | `X-Acting-User: <userId>` header, set from the user switcher (no real auth) |
 | Seed / reset | Java `DemoDataService`: seeds on first start; visible **Reset Demo Data** button calls `POST /api/demo/reset` |
 | Text limits | Post 1–500, comment 1–300 Unicode code points after trimming; enforced on the server |
 
-Why Spring JDBC rather than JPA: the schema is small and the feed is a read query
-with counts and ordering, which is clearer as explicit SQL. Idempotent likes and
-follows rely on primary-key constraints, which plain SQL handles directly.
+How JPA is used: entities hold plain id columns (`authorId`, `postId`) rather
+than `@ManyToOne` links, so no module reaches into another module's entities.
+Batch reads use JPQL aggregate queries plus one native window-function query
+(Section 8). The demo seed/reset uses `JdbcTemplate`, because it rewrites every
+table at once and needs to restart identity counters.
 
 ## 2. Architecture diagram
 
@@ -33,7 +35,7 @@ flowchart LR
     end
 
     subgraph App["Spring Boot app :8080 (modular monolith)"]
-        WEB["common.web<br/>ActingUser resolver · error handler"]
+        WEB["web layer<br/>@ActingUser resolver (user) · error handler (common)"]
         USER["user"]
         FOLLOW["follow"]
         POST["post (write)"]
@@ -47,7 +49,7 @@ flowchart LR
         FEED --> USER & FOLLOW & POST & ENG
     end
 
-    DB[("H2 file DB<br/>./data/instagram-mvp")]
+    DB[("H2 file DB<br/>backend/data/instagram-mvp")]
 
     API -- "REST/JSON /api/**<br/>(Vite proxy in dev)" --> WEB
     USER & FOLLOW & POST & ENG & FEED & DEMO --> DB
@@ -59,14 +61,17 @@ flowchart LR
 /backend                      Spring Boot (Maven)
   src/main/java/com/example/insta/
     InstaApplication.java
-    common/                   ActingUser resolver, ApiError, exceptions, TextRules, Clock bean,
-                              shared DTOs (UserSummary, PostView, Comment)
-    user/                     UserController, UserService, UserRepository
-    follow/                   FollowController, FollowService, FollowRepository
-    post/                     PostController (create), PostService, PostRepository
-    engagement/               LikeController, CommentController, EngagementService, Like/CommentRepository
-    feed/                     FeedController, PostQueryController, FeedService, PostViewAssembler
-    demo/                     DemoController, DemoDataService, DemoSeed
+    common/                   ApiError, ApiException, GlobalExceptionHandler, TextRules, TimeConfig (Clock)
+      api/                    shared DTOs: UserSummary, PostView, CommentView, TextRequest
+    user/                     User, UserRepository, UserService, UserController,
+                              @ActingUser + ActingUserArgumentResolver
+    follow/                   Follow, FollowRepository, FollowService, FollowController, FollowState
+    post/                     Post, PostRepository, PostService, PostController (create only)
+    engagement/               PostLike, Comment, their repositories, EngagementService,
+                              EngagementController (like/unlike/comment), LikeState, PostStats
+    feed/                     FeedService, PostViewAssembler, FeedController, Profile
+    demo/                     DemoDataService (seed + reset), DemoController
+  src/test/java/...           API tests per module (MockMvc), TextRulesTest, PersistenceTest
   src/main/resources/
     application.yml
     db/migration/V1__init.sql
@@ -75,24 +80,25 @@ flowchart LR
   src/context/                ActingUserContext.tsx
   src/pages/                  FeedPage, ProfilePage, PostDetailPage, NotFoundPage
   src/components/             see Section 7
-/data                         H2 files (git-ignored, created at runtime)
+/backend/data                 H2 files (git-ignored, created at runtime)
 ```
 
 ## 4. Backend modules
 
 Each module is a Java package with a public service and a controller. Its
-repositories are package-private, so other modules can't call them. A module
+repositories (and, where possible, entities) are package-private, so other
+modules can't call them. A module
 uses another module only through that module's service. No cycles.
 
 | Module | Owns tables | Responsibilities | Depends on |
 |---|---|---|---|
-| `common` | — | `@ActingUser` argument resolver, `ApiError` + `@RestControllerAdvice`, `NotFoundException`/`ValidationException`, `TextRules`, `Clock` bean | — |
-| `user` | `users` | List users, look up by id/username | — |
+| `common` | — | `ApiError` + `@RestControllerAdvice`, `ApiException`, `TextRules`, `Clock` bean, shared DTOs | — |
+| `user` | `users` | List users, look up by id/username, `@ActingUser` header resolver (it needs the user lookup, so it lives here rather than in `common`) | — |
 | `follow` | `follows` | Follow/unfollow (idempotent, no self-follow), followers/following lists, `followeeIds(userId)`, counts | `user` |
 | `post` | `posts` | Create post (validate, trim, set author + time), `findByAuthors`, `findById`, `countByAuthor` | `user` |
 | `engagement` | `likes`, `comments` | Like/unlike (idempotent), add comment, batch stats per post list | `user`, `post` |
 | `feed` | — (read only) | Feed, a user's posts, post detail: combines posts + engagement into `PostView` | `user`, `follow`, `post`, `engagement` |
-| `demo` | all (delete + insert) | Seed on first start, reset on request | runs SQL across all tables in one transaction |
+| `demo` | all (delete + insert) | Seed on first start, reset on request | runs SQL across all tables (`JdbcTemplate`) |
 
 Note: to avoid a `user` ↔ `follow` cycle, the **profile** endpoint
 (`GET /api/users/{username}`) lives in the `feed` module, which already
@@ -105,8 +111,10 @@ Write flow for any action:
 
 ## 5. Database schema
 
-Flyway migration `V1__init.sql`. Timestamps are stored as UTC
-`TIMESTAMP WITH TIME ZONE` and mapped to `java.time.Instant`.
+Flyway migration `V1__init.sql`; Hibernate runs with `ddl-auto: validate`, so a
+mismatch between entities and schema fails at startup. Timestamps are stored as
+UTC `TIMESTAMP(6) WITH TIME ZONE` and mapped to `java.time.Instant`. The server
+truncates new timestamps to microseconds so what it returns matches what it stores.
 
 ```sql
 CREATE TABLE users (
@@ -120,14 +128,14 @@ CREATE TABLE posts (
   id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   author_id  VARCHAR(20)   NOT NULL REFERENCES users(id),
   text       VARCHAR(2000) NOT NULL,              -- 500 code points enforced in app (see below)
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL
+  created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL
 );
 CREATE INDEX idx_posts_author_created ON posts(author_id, created_at DESC, id DESC);
 
 CREATE TABLE likes (
   post_id    BIGINT      NOT NULL REFERENCES posts(id),
   user_id    VARCHAR(20) NOT NULL REFERENCES users(id),
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
   PRIMARY KEY (post_id, user_id)                  -- one like per user per post
 );
 
@@ -136,14 +144,14 @@ CREATE TABLE comments (
   post_id    BIGINT        NOT NULL REFERENCES posts(id),
   author_id  VARCHAR(20)   NOT NULL REFERENCES users(id),
   text       VARCHAR(1200) NOT NULL,              -- 300 code points enforced in app
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL
+  created_at TIMESTAMP(6) WITH TIME ZONE NOT NULL
 );
 CREATE INDEX idx_comments_post_created ON comments(post_id, created_at, id);
 
 CREATE TABLE follows (
   follower_id VARCHAR(20) NOT NULL REFERENCES users(id),
   followee_id VARCHAR(20) NOT NULL REFERENCES users(id),
-  created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at  TIMESTAMP(6) WITH TIME ZONE NOT NULL,
   PRIMARY KEY (follower_id, followee_id),
   CONSTRAINT chk_no_self_follow CHECK (follower_id <> followee_id)
 );
@@ -163,7 +171,8 @@ erDiagram
 
 Schema notes:
 - **Length limits.** Java `String.length()` counts UTF-16 units, so one emoji counts as 2. `TextRules` trims, then checks `text.codePointCount(...)` against 500 / 300. The columns are wider than the limit so a valid emoji-heavy post never hits a database error.
-- **Idempotency.** Like and follow do a plain `INSERT`. A `DuplicateKeyException` is caught and treated as success, which is also safe when two identical requests race. Unlike and unfollow are a `DELETE` that may affect 0 rows.
+- **Idempotency.** Like and follow check `existsById`, then insert with `saveAndFlush` (the entities implement `Persistable` with `isNew() = true`, so JPA inserts instead of merging). If two identical requests race, the primary key rejects the second insert; the service catches `DataIntegrityViolationException`, confirms the row now exists, and treats it as success. Unlike and unfollow are a JPQL `DELETE` that may affect 0 rows.
+- **Entity naming.** The like entity is `PostLike` because `LIKE` is a JPQL keyword.
 - **Self-follow** is rejected in `FollowService` (400) and blocked again by the `CHECK` constraint.
 - **IDs.** Seed posts p1–p3 become post ids 1–3, inserted in that order. Ids increase with insert order, so they work as the tie-breaker for feed ordering.
 
@@ -172,17 +181,21 @@ Schema notes:
 ```yaml
 spring:
   datasource:
-    url: jdbc:h2:file:./data/instagram-mvp
+    url: jdbc:h2:file:./data/instagram-mvp   # relative to backend/
     username: sa
     password: ""
   flyway.enabled: true
+  jpa:
+    open-in-view: false
+    hibernate.ddl-auto: validate
   h2.console.enabled: true     # http://localhost:8080/h2-console (dev only)
 ```
 
 ## 6. REST API
 
-Base path `/api`, JSON. Every request except `GET /api/users` must send
-`X-Acting-User: <userId>`. Errors use one shape:
+Base path `/api`, JSON. Every request except `GET /api/users` and
+`POST /api/demo/reset` must send `X-Acting-User: <userId>`. Errors use one
+shape (`field` is omitted when it doesn't apply):
 
 ```json
 { "status": 400, "code": "VALIDATION_ERROR", "message": "Post cannot be empty.", "field": "text" }
@@ -190,9 +203,12 @@ Base path `/api`, JSON. Every request except `GET /api/users` must send
 
 | Code | When |
 |---|---|
-| 400 `VALIDATION_ERROR` | Empty or too-long text, self-follow |
-| 400 `INVALID_ACTING_USER` | Header missing or names an unknown user |
-| 404 `NOT_FOUND` | Unknown post or target user |
+| 400 `VALIDATION_ERROR` | Empty or too-long text, self-follow, missing or malformed JSON body |
+| 400 `INVALID_ACTING_USER` | Header missing or names an unknown user (checked before anything else) |
+| 404 `NOT_FOUND` | Unknown post or target user, non-numeric post id, unknown route |
+| 405 `METHOD_NOT_ALLOWED` | Wrong HTTP method for a route |
+| 415 `UNSUPPORTED_MEDIA_TYPE` | Body sent without `Content-Type: application/json` |
+| 500 `INTERNAL_ERROR` | Anything unexpected; generic message, no stack trace |
 
 ### Endpoints
 
@@ -260,32 +276,26 @@ PostCard = author link, text (pre-wrap, plain text), RelativeTime, LikeButton, C
 
 ## 8. Feed retrieval logic
 
-`FeedService.getFeed(me)` runs a fixed 3 queries, however many posts there are:
+`FeedService.feed(me)` runs a fixed number of queries (six), however many posts there are:
 
 1. **Author set:** `authorIds = {me} ∪ followService.followeeIds(me)`
-2. **Posts** (`post` module):
+2. **Posts** (`post` module), a Spring Data derived query:
+   `findByAuthorIdInOrderByCreatedAtDescIdDesc(authorIds)`
+3. **Engagement for those posts** (`engagement` module, called with all `postIds` at once):
    ```sql
-   SELECT p.id, p.author_id, p.text, p.created_at
-   FROM posts p
-   WHERE p.author_id IN (:authorIds)
-   ORDER BY p.created_at DESC, p.id DESC
-   ```
-3. **Engagement for those posts** (`engagement` module, one call with all `postIds`). Internally this is up to three small batch queries:
-   ```sql
-   -- counts + likedByMe
-   SELECT p.id,
-          (SELECT COUNT(*) FROM likes l    WHERE l.post_id = p.id) AS like_count,
-          (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
-          EXISTS (SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = :me) AS liked_by_me
-   FROM posts p WHERE p.id IN (:postIds);
+   -- JPQL: like counts and comment counts, grouped
+   select new PostCount(l.postId, count(l)) from PostLike l where l.postId in :postIds group by l.postId
+   select new PostCount(c.postId, count(c)) from Comment c  where c.postId in :postIds group by c.postId
+   -- JPQL: which of these the acting user liked
+   select l.postId from PostLike l where l.userId = :me and l.postId in :postIds
 
-   -- 2 most recent comments per post
-   SELECT * FROM (
+   -- native SQL: the 2 most recent comments per post
+   SELECT id, post_id, author_id, text, created_at FROM (
      SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.post_id ORDER BY c.created_at DESC, c.id DESC) AS rn
      FROM comments c WHERE c.post_id IN (:postIds)
-   ) WHERE rn <= 2;
+   ) ranked WHERE rn <= 2;
    ```
-4. **Assemble** (`PostViewAssembler`): join posts with stats and comment authors (users come from one `userService.findByIds` call), and sort each post's preview comments oldest first.
+4. **Assemble** (`PostViewAssembler`): join posts with stats and authors (one `userService.summariesById` call each for post and comment authors), and sort each post's preview comments oldest first.
 
 Why this satisfies the requirements:
 - **FR-5.1:** only posts by me or people I follow right now, because follows are read at request time.
@@ -300,13 +310,14 @@ pagination on `(created_at, id)` using the existing index.
 
 ## 9. Seed data and reset
 
-`DemoDataService` holds the seed from REQUIREMENTS.md Section 4 as Java constants.
+`DemoDataService` holds the seed from REQUIREMENTS.md Section 4 in code.
 
 - **On startup** (`ApplicationRunner`): if `users` is empty, seed. Existing data is left alone, which keeps it across restarts (NFR-1).
-- **Reset** (`@Transactional`):
-  1. `DELETE` in dependency order: comments, likes, follows, posts, users.
-  2. Restart identity counters: `ALTER TABLE posts ALTER COLUMN id RESTART WITH 1`, and the same for `comments`.
-  3. Insert the seed with `T = clock.instant()`: p1 at T−3h, p2 at T−2h, p3 at T−1h, plus the seed follows, likes and comment (likes and the comment get timestamps after their post).
+- **Reset:**
+  1. Restart identity counters: `ALTER TABLE posts ALTER COLUMN id RESTART WITH 1`, and the same for `comments`. H2 commits implicitly on DDL, so this runs first, outside the transaction.
+  2. In one transaction: `DELETE` in dependency order (comments, likes, follows, posts, users), then insert the seed with `T = clock.instant()`: p1 at T−3h, p2 at T−2h, p3 at T−1h, the seed follows, and the likes and comment timed after their posts.
+  3. Seed posts therefore always get ids 1–3 (p1–p3).
+- Known limit: a post created by another request in the instant between steps 1 and 2 could hit a duplicate id and fail. Acceptable for a single-user local demo.
 - Time comes from an injected `Clock`, so tests can fix T.
 
 ## 10. Running locally
@@ -317,11 +328,12 @@ pagination on `(created_at, id)` using the existing index.
 | Frontend | `cd frontend && npm install && npm run dev` | http://localhost:5173 |
 
 Vite proxies `/api` to `localhost:8080`, so the browser makes no
-cross-origin requests and no CORS setup is needed. Deleting `./data/`
-starts a fresh database that is seeded on the next start.
+cross-origin requests and no CORS setup is needed. Deleting `backend/data/`
+starts a fresh database that is seeded on the next start. Run the backend
+tests with `cd backend && ./mvnw test`.
 
 ## 11. Testing approach
 
-- **Backend:** `@SpringBootTest` + MockMvc against an in-memory H2 (`jdbc:h2:mem:`, test profile), with a fixed `Clock`. Acceptance criteria AC-0 to AC-7 map to API tests, run after a reset. Unit tests cover `TextRules` (trimming, 500/501, emoji counting).
+- **Backend:** `@SpringBootTest` + MockMvc against an in-memory H2 (`jdbc:h2:mem:`, `test` profile), with a settable `MutableClock`. Each test starts from a demo reset. API tests per module cover the backend side of AC-1 to AC-7 and the edge cases; `TextRulesTest` covers trimming, 500/501 and emoji counting; `PersistenceTest` restarts the app on a temporary H2 file to prove data survives (AC-6.1); a concurrency test fires 8 simultaneous identical likes and checks one row is stored.
 - **Frontend:** Vitest + React Testing Library for PostComposer limits, LikeButton/FollowButton toggles and disabled-while-pending, and EmptyFeed.
 - **Manual smoke test:** reset, switch through alice/bob/carol, and check feeds match AC-5.1 to AC-5.3.

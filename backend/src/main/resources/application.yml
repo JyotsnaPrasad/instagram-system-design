@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: insta-mvp
+  datasource:
+    # Relative to the working directory, i.e. backend/data/ when started from backend/.
+    url: jdbc:h2:file:./data/instagram-mvp
+    username: sa
+    password: ""
+  flyway:
+    enabled: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  h2:
+    console:
+      enabled: true
+
+server:
+  port: 8080
+  error:
+    include-stacktrace: never
+    include-message: never

@@ -1,0 +1,9 @@
+# Backend
+backend/target/
+backend/data/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
