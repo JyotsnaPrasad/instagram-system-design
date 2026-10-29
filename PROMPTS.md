@@ -20,6 +20,7 @@ under that stage's prompt.
 | 6 | Browser tests and screenshots | `frontend/e2e/`, `docs/screenshots/` |
 | 7 | Submission preparation | `PROMPTS.md`, README polish, docs check |
 | 8 | Demo video | `docs/demo/`, `frontend/e2e/demo.spec.ts` |
+| 9 | Inline video in README | Blocked; see outcome below |
 
 ## 1. Requirements
 
@@ -153,3 +154,27 @@ Keep the recording reasonably small for GitHub. Verify that it plays correctly a
 Run the relevant checks, commit and push to the current branch.
 Report the video filename, duration, size, verification results, and any limitations. Do not merge into main yet.
 ```
+
+## 9. Inline video in the README
+
+```text
+Make the demo walkthrough video play inline in the GitHub README instead of appearing as a downloadable repository file.
+
+Use GitHub's video attachment feature to upload docs/demo/instaclone-walkthrough.mp4 and obtain a GitHub-hosted user-attachments URL.
+
+If the installed GitHub CLI supports it, use the video attachment functionality on an existing issue or pull request. Do not create unnecessary issues or pull requests.
+
+Update the README Demo Walkthrough section to place the resulting video attachment URL on its own line so GitHub renders a player.
+
+Keep the original MP4 in docs/demo/ as well.
+
+Verify that the rendered README displays an inline playable video, not merely a download link. If GitHub permissions or tooling prevent this, explain the blocker instead of guessing a URL.
+
+Append this prompt verbatim to PROMPTS.md, commit and push to the current branch. Do not merge into main yet.
+```
+
+Outcome: blocked, so the README was left unchanged. GitHub only issues `user-attachments`
+URLs when a file is dropped into a comment or editor in the web interface; there is no
+API for it, and the GitHub CLI (2.89.0) has no attachment command. The repository also
+had no issues or pull requests to attach to. The upload has to be done by hand in the
+GitHub web UI.
