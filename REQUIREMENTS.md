@@ -107,7 +107,7 @@ Seed interactions:
 
 Default acting user on first load: `alice`.
 
-A **reset** action (developer/demo utility) restores exactly this seed state.
+A visible **Reset Demo Data** button restores exactly this seed state.
 
 ## 5. Functional requirements
 
@@ -207,7 +207,7 @@ A **reset** action (developer/demo utility) restores exactly this seed state.
 | E16 | Unfollow a user not followed | No-op; no error. |
 | E17 | Mutual follow (A→B and B→A) | Both records exist independently; unfollowing one leaves the other. |
 | E18 | Unfollow a user whose post the acting user liked/commented on | Their posts leave the feed; the like and comment remain and are still visible on the post detail and author's profile. |
-| E19 | Acting user follows nobody and has no posts (e.g. carol after reset, before posting) | Feed shows only carol's own posts; if none, the empty-state message. |
+| E19 | Acting user follows nobody (e.g. carol after reset) | Feed shows only carol's own posts; if none, the empty-state message. |
 | E20 | Two posts with identical `createdAt` | Ordered by post `id` descending; order stable across reloads. |
 | E21 | Request names an unknown user id, post id, or target user | 404 (unknown post/target) or 400 (unknown acting user); nothing saved. |
 | E22 | Switching acting user while a request is in flight | The request completes as the user who started it; the UI then shows the new acting user's view. |
@@ -295,10 +295,12 @@ passed as a header (e.g. `X-Acting-User: u1`) since there is no auth.
 | PUT | `/api/posts/:id/like` | Like (idempotent) |
 | DELETE | `/api/posts/:id/like` | Unlike (idempotent) |
 | POST | `/api/posts/:id/comments` | Add comment |
-| POST | `/api/dev/reset` | Restore seed data |
+| POST | `/api/demo/reset` | Restore seed data |
 
-## 10. Open questions
+## 10. Resolved decisions
 
-1. Should reset be visible in the UI or only available as a developer command?
-2. Should post and comment length limits differ from 500 / 300?
-3. Is a server-backed store required, or is browser-only storage (localStorage) acceptable for the demo? NFR-1 currently assumes a server.
+1. Reset is a visible **Reset Demo Data** button in the UI.
+2. Limits stay at 500 characters per post and 300 per comment.
+3. Data is persisted on the backend (H2 file database), not only in browser storage.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical design.
