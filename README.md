@@ -17,7 +17,25 @@ frontend, browser tests and submission prep. The exact prompts are in
 
 ## Demo recording
 
-> 📹 **Demo recording:** _link to be added_
+[![Walkthrough video: Instaclone home feed](docs/demo/walkthrough-poster.jpg)](docs/demo/instaclone-walkthrough.mp4)
+
+**[▶ Watch the walkthrough (MP4, 62 s, 0.9 MB)](docs/demo/instaclone-walkthrough.mp4)**
+
+A real Chromium session recorded with Playwright against the running backend and
+frontend, using demo data only. In order, it shows:
+
+1. The home feed with the seeded posts.
+2. Switching between alice, bob and carol, whose feeds differ.
+3. alice creating a post, which appears at the top of her feed.
+4. bob liking and commenting on that post.
+5. alice following carol, and carol's older post appearing in her feed.
+6. A page refresh, with everything still there because it's stored on the backend.
+7. The Reset Demo Data confirmation, and the reset back to the original data.
+
+Playwright's video doesn't capture the mouse pointer, so a small cursor overlay follows
+the real mouse events. A caption at the bottom names each step. Everything else is the
+live app. The brief white flash at 0:48 is the real page reload. GitHub may offer the
+MP4 as a download rather than playing it inline, depending on your browser.
 
 ## Features
 
@@ -144,6 +162,7 @@ curl -H 'X-Acting-User: u2' http://localhost:8080/api/feed
 | Browser (end to end) | `npm run test:e2e` (`frontend/`) | Real backend + Vite + Chromium: acceptance criteria through the UI, keyboard, mobile layout |
 | Lint and types | `npm run lint`, `npm run typecheck` (`frontend/`) | ESLint and `tsc` |
 | Production build | `npm run build` (`frontend/`) | Type check plus Vite build |
+| Demo video | `npm run demo:record`, then `npm run demo:mp4` (`frontend/`) | Re-records the walkthrough; the conversion needs `ffmpeg` with `libx264` |
 
 The browser tests start the backend and Vite themselves. The backend gets its own
 database under `backend/target/e2e-data/`, so your `backend/data/` is untouched. If
@@ -222,6 +241,7 @@ Captured from the running app by `npm run screenshots`, using demo data only.
 backend/            Spring Boot app (Maven wrapper, Flyway migration, tests)
 frontend/           React + TypeScript app (Vite), unit tests in src/, browser tests in e2e/
 docs/screenshots/   Screenshots captured from the running app
+docs/demo/          Walkthrough video and its poster image
 REQUIREMENTS.md     Requirements, edge cases, acceptance criteria
 ARCHITECTURE.md     Design: modules, schema, API, feed logic
 PROMPTS.md          Prompts used to build the project

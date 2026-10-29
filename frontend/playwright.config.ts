@@ -11,6 +11,7 @@ const BACKEND_URL = 'http://localhost:8080';
  *
  *   npm run test:e2e      # the test suite
  *   npm run screenshots   # regenerate docs/screenshots/
+ *   npm run demo:record   # record the walkthrough video (then npm run demo:mp4)
  */
 export default defineConfig({
   testDir: './e2e',
@@ -31,12 +32,17 @@ export default defineConfig({
   projects: [
     {
       name: 'e2e',
-      testIgnore: /screenshots\.spec\.ts/,
+      testIgnore: /(screenshots|demo)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'screenshots',
       testMatch: /screenshots\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'demo',
+      testMatch: /demo\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

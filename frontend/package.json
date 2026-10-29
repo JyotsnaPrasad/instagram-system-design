@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test --project=e2e",
-    "screenshots": "playwright test --project=screenshots"
+    "screenshots": "playwright test --project=screenshots",
+    "demo:record": "playwright test --project=demo",
+    "demo:mp4": "ffmpeg -y -loglevel error -ss 1.2 -i test-results/demo-video/walkthrough.webm -vf \"fps=25\" -c:v libx264 -preset slow -crf 24 -pix_fmt yuv420p -movflags +faststart -an ../docs/demo/instaclone-walkthrough.mp4"
   },
   "dependencies": {
     "@tanstack/react-query": "5.59.20",

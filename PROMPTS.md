@@ -19,6 +19,7 @@ under that stage's prompt.
 | 5 | Preview question | No code changes |
 | 6 | Browser tests and screenshots | `frontend/e2e/`, `docs/screenshots/` |
 | 7 | Submission preparation | `PROMPTS.md`, README polish, docs check |
+| 8 | Demo video | `docs/demo/`, `frontend/e2e/demo.spec.ts` |
 
 ## 1. Requirements
 
@@ -128,4 +129,27 @@ Prepare the repository for final interview submission.
 4. Run the final checks, commit and push to the current branch.
 
 Do not merge into main yet. Report any missing information or blockers.
+```
+
+## 8. Demo video
+
+```text
+Create a short, polished video walkthrough of the working Instagram-like application using Playwright and Chromium in this cloud environment.
+Record a real browser session against the running Spring Boot backend and React frontend, demonstrating:
+
+1. The home feed with seeded posts.
+2. Switching between demo users.
+3. Creating a new post.
+4. Liking and commenting on a post.
+5. Following another user and seeing their posts appear in the feed.
+6. Refreshing the page to demonstrate persistence.
+7. The Reset Demo Data confirmation and reset.
+
+Use visible mouse interactions and natural pauses so the recording is easy to follow. Aim for 60–90 seconds.
+Use only demo data. Do not generate a simulated or animated mockup.
+Save the recording under docs/demo/ in a GitHub-friendly format, preferably MP4. If MP4 conversion is unavailable, use Playwright's WebM recording format.
+Update README.md to link to the actual recording and briefly describe what it demonstrates.
+Keep the recording reasonably small for GitHub. Verify that it plays correctly and that the application is visible throughout.
+Run the relevant checks, commit and push to the current branch.
+Report the video filename, duration, size, verification results, and any limitations. Do not merge into main yet.
 ```
