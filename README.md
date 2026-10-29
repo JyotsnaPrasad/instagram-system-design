@@ -16,3 +16,15 @@ Requires Java 17+. From `backend/`:
 On first start the database is seeded with three demo users (alice, bob, carol).
 Send `X-Acting-User: u1` (or `u2`, `u3`) on requests to act as a user, and
 `POST /api/demo/reset` to restore the demo data.
+
+## Frontend
+
+Requires Node 18+. Start the backend first, then from `frontend/`:
+
+```bash
+npm install
+npm run dev        # http://localhost:5173, proxies /api to :8080
+npm test           # unit and component tests
+npm run lint
+npm run build      # type-checks, then builds to dist/
+```

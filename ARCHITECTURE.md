@@ -1,6 +1,6 @@
 # Instagram-like MVP — Architecture
 
-Status: Backend implemented (`backend/`); frontend not built yet
+Status: Implemented — backend in `backend/`, frontend in `frontend/`
 Implements: [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ## 1. Decisions at a glance
@@ -10,7 +10,7 @@ Implements: [REQUIREMENTS.md](REQUIREMENTS.md)
 | Shape | Modular monolith: one Spring Boot app with REST APIs, plus a separate React single-page app |
 | Backend | Java 17, Spring Boot 3.5.x, Maven (wrapper included), Spring Web, Spring Data JPA (Hibernate) |
 | Database | H2, file-based (`backend/data/instagram-mvp.mv.db`), schema managed by Flyway; Hibernate only validates it |
-| Frontend | React 18 + TypeScript, Vite, React Router, TanStack Query |
+| Frontend | React 18 + TypeScript 5.6, Vite 5, React Router 6, TanStack Query 5; Vitest + Testing Library; ESLint |
 | "Auth" | `X-Acting-User: <userId>` header, set from the user switcher (no real auth) |
 | Seed / reset | Java `DemoDataService`: seeds on first start; visible **Reset Demo Data** button calls `POST /api/demo/reset` |
 | Text limits | Post 1–500, comment 1–300 Unicode code points after trimming; enforced on the server |
@@ -76,10 +76,13 @@ flowchart LR
     application.yml
     db/migration/V1__init.sql
 /frontend                     Vite + React + TS
-  src/api/                    client.ts, types.ts, endpoint functions
+  src/api/                    client.ts (fetch wrapper, ApiError), endpoints.ts, types.ts
   src/context/                ActingUserContext.tsx
+  src/hooks/                  queries.ts (query keys, queries, mutations)
+  src/lib/                    text.ts (limits, code-point counting), time.ts (relative time)
   src/pages/                  FeedPage, ProfilePage, PostDetailPage, NotFoundPage
   src/components/             see Section 7
+  src/test/                   fake API, render helper, app-level tests
 /backend/data                 H2 files (git-ignored, created at runtime)
 ```
 
@@ -269,7 +272,9 @@ PostCard = author link, text (pre-wrap, plain text), RelativeTime, LikeButton, C
 - **API client:** `client.ts` wraps `fetch`. It reads the acting user **when the call starts** and sets the header, so a request already in flight finishes as the user who started it (E22).
 - **Cache keys** include the acting user id, for example `['feed', actingUserId]`. Switching user shows that user's data without manual cache clearing.
 - **After a successful write** (post, like, comment, follow), invalidate `feed`, `userPosts`, `post` and `profile` queries so every visible view updates (FR-5.6). At MVP size, invalidating these broadly is simpler than precise cache updates.
-- **Submit buttons** (post, comment, like, follow) are disabled while their request is in flight, which prevents double submits (E9, E10).
+- **Submit buttons** (post, comment, like, follow) are disabled while their request is in flight, which prevents double submits (E9, E10). Each mutation stays pending until the refetch finishes, so buttons never flash a stale state.
+- **Accessibility:** skip link, visible focus rings, labelled inputs, the like toggle uses `aria-pressed`, the follow button's label states the action, profile sections are ARIA tabs with arrow-key support, errors use `role="alert"`, and the confirm dialog traps focus and returns it on close. Touch targets are at least 44px.
+- **Mobile:** below 900px the user sidebar becomes a story-style row; below 480px cards go edge to edge and the header puts the switcher on its own full-width row.
 - **Character counters** count code points (`[...text.trim()].length`), matching the server.
 - **Text rendering:** user text goes through React's default escaping only. No `dangerouslySetInnerHTML` (E6). CSS `white-space: pre-wrap; overflow-wrap: anywhere` covers E7 and E8.
 - **Reset Demo Data:** the button asks for confirmation, calls `POST /api/demo/reset`, then calls `queryClient.invalidateQueries()` on everything. The acting user is kept, since the three users always exist.
@@ -335,5 +340,5 @@ tests with `cd backend && ./mvnw test`.
 ## 11. Testing approach
 
 - **Backend:** `@SpringBootTest` + MockMvc against an in-memory H2 (`jdbc:h2:mem:`, `test` profile), with a settable `MutableClock`. Each test starts from a demo reset. API tests per module cover the backend side of AC-1 to AC-7 and the edge cases; `TextRulesTest` covers trimming, 500/501 and emoji counting; `PersistenceTest` restarts the app on a temporary H2 file to prove data survives (AC-6.1); a concurrency test fires 8 simultaneous identical likes and checks one row is stored.
-- **Frontend:** Vitest + React Testing Library for PostComposer limits, LikeButton/FollowButton toggles and disabled-while-pending, and EmptyFeed.
+- **Frontend:** Vitest + React Testing Library. Unit tests cover text limits, relative time and the API client (header, error mapping, unreachable backend). App-level tests render the real routes against a fake `fetch` and cover the user switcher and its fallback, feed states (loading, error + retry, empty), composer validation and server errors, like/comment, profiles and follow, not-found pages, and the reset dialog.
 - **Manual smoke test:** reset, switch through alice/bob/carol, and check feeds match AC-5.1 to AC-5.3.
