@@ -14,4 +14,10 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
     },
   },
+  {
+    // Playwright tests and tool configs run in Node.
+    files: ['e2e/**/*.ts', '*.config.ts'],
+    languageOptions: { globals: globals.node },
+    rules: { 'react-hooks/rules-of-hooks': 'off' },
+  },
 );
